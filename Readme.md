@@ -11,10 +11,17 @@ Tutorial presented at Percona Live 2022 - Austin, TX
 This playbook was designed to run on CentOS 8 Stream or Rocky Linux 8 and Ansible 2.12
 
 1. Install the OS on a machine
-2. Craft an [inventory](https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html) file
-3. Apply the playbook
+2. Install package `ansible-core` on your machine
   ```
-    ansible-playbook -i <inventory-file> main.yml
+    yum install ansible-core
+  ```
+3. Install ansible dependencies
+  ```
+    ansible-galaxy collection install -r requirements.yml
+  ```
+4. Apply the playbook
+  ```
+    ansible-playbook -i inventory main.yml
   ```
 
 ## What this will do
