@@ -1,7 +1,7 @@
 # Getting started with InnoDB Cluster tutorial
 
-Tutorial presented at Percona Live 2022 - Austin, TX
-Presntation link: https://sched.co/10Iua
+Tutorial presented at Percona Live 2022 - Austin, TX  
+Presentation link: https://sched.co/10Iua
 
 ## Authors:
 - Jakob Lorberblatt, lorberblatt@pythian.com
