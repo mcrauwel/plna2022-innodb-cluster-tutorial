@@ -1,0 +1,69 @@
+---
+repos:
+  - https://repo.percona.com/yum/percona-release-latest.noarch.rpm
+  - https://dev.mysql.com/get/mysql80-community-release-el8-4.noarch.rpm
+
+packages:
+  - epel-release
+  - xinetd
+  - jemalloc
+  - python3-PyMySQL
+  - python3-libselinux
+  - mysql-community-server-8.0.28
+  - mysql-router-community-8.0.28
+  - mysql-shell-8.0.28
+  - sysbench
+  - percona-toolkit
+  - percona-xtrabackup-80
+  - haproxy
+  - nginx
+  - python3-gunicorn
+  - python3-pyyaml
+
+mysql_user: mysql
+mysql_group: mysql
+
+mysql_instances:
+  - name: mysql1
+    datadir: /opt/mysql1/data
+    logdir: /opt/mysql1/logs
+    server-id: 1
+    binlog_format: ROW
+    port: 3301    # regular MySQL port
+    xport: 33010  # X-protocol port
+    aport: 33012  # admin port
+    check_port: 9201 # haproxy health check
+  - name: mysql2
+    datadir: /opt/mysql2/data
+    logdir: /opt/mysql2/logs
+    server-id: 2
+    binlog_format: ROW
+    port: 3302    # regular MySQL port
+    xport: 33020  # X-protocol port
+    aport: 33022  # admin port
+    check_port: 9202 # haproxy health check
+  - name: mysql3
+    datadir: /opt/mysql3/data
+    logdir: /opt/mysql3/logs
+    server-id: 3
+    binlog_format: ROW
+    port: 3303    # regular MySQL port
+    xport: 33030  # X-protocol port
+    aport: 33032  # admin port
+    check_port: 9203 # haproxy health check
+
+mysql_replication:
+  hostmask: '%'
+  username: replication
+  password: replication
+
+application:
+  username: application
+  password: application
+  hostmask: '%'
+  database: application
+  privileges: 'ALL'
+
+  directory: /opt/application
+  configdir: /etc/application
+  service: application.service

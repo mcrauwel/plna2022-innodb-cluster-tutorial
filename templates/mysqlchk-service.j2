@@ -1,0 +1,18 @@
+# default: on
+# description: mysqlchk
+service {{ item['name'] }}-mysqlchk
+{
+# this is a config for xinetd, place it in /etc/xinetd.d/
+  disable = no
+  flags = REUSE
+  socket_type = stream
+  port = {{ item['check_port'] }}
+  wait = no
+  user = nobody
+  server = /usr/local/bin/{{ item['name'] }}.mysqlchk.sh
+  log_on_failure += USERID
+  only_from = 0.0.0.0/0
+  # recommended to put the IPs that need
+  # to connect exclusively (security purposes)
+  per_source = UNLIMITED
+}

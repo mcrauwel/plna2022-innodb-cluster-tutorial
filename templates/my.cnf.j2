@@ -1,0 +1,38 @@
+[mysqld@{{ item['name'] }}]
+datadir                          = {{ item['datadir'] }}
+port                             = {{ item['port'] | default(3306) }}
+mysqlx-port                      = {{ item['xport'] | default(33060) }}
+admin-address                    = {{ item['admin_address'] | default('127.0.0.1') }}
+admin-port                       = {{ item['aport'] | default(33062) }}
+log-error                        = {{ item['logdir'] }}/error.log
+pid-file                         = {{ item['datadir'] }}/{{ item['name'] }}.pid
+socket                           = {{ item['datadir'] }}/{{ item['name'] }}.sock
+
+server_id                        = {{ item['server-id'] }}
+log-bin                          = {{ item['logdir'] }}/mysql-bin
+binlog_format                    = {{ item['binlog_format'] | default('MIXED') }}
+log-replica-updates              = {{ item['log_replica_updates'] | default('ON') }}
+read_only                        = {{ item['read_only'] | default('ON') }}
+sync-binlog                      = {{ item['sync_binlog'] | default(1) }}
+binlog-expire-logs-seconds       = {{ item['expire_logs_days'] | default(604800) }}
+relay-log                        = {{ item['datadir'] }}/relay
+
+gtid_mode                        = ON
+enforce-gtid-consistency
+
+master_info_repository           = TABLE
+relay_log_info_repository        = TABLE
+
+#####################
+#InnoDB settings
+#####################
+innodb-buffer-pool-size          = {{ item['innodb']['buffer_pool_size'] | default('128M') }}
+innodb-log-file-size             = {{ item['innodb']['log_file_size'] | default('8M') }}
+innodb-log-files-in-group        = {{ item['innodb']['log_files_in_group'] | default(2) }}
+innodb-flush-method              = {{ item['innodb']['flush_method'] | default('O_DIRECT') }}
+
+# Durability settings
+innodb-doublewrite               = {{ item['innodb']['doublewrite'] | default(1) }}
+innodb-file-per-table            = {{ item['innodb']['file_per_table'] | default(1) }}
+innodb-flush-log-at-trx-commit   = {{ item['innodb']['flush_log_at_trx_commit'] | default(1) }}
+innodb-rollback-on-timeout       = {{ item['innodb']['rollback_on_timeout'] | default(1) }}

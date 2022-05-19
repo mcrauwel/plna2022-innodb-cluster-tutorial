@@ -1,0 +1,11 @@
+[Unit]
+Description=My application service
+After=multi-user.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/bin/python3 {{ application['directory'] }}/application.py {{ application['configdir'] }}/config.yaml
+
+[Install]
+WantedBy=multi-user.target

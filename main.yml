@@ -1,0 +1,298 @@
+---
+- hosts: all
+  become: yes
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: create MySQL group
+      ansible.builtin.group:
+        name: "{{ mysql_group }}"
+        system: yes
+        state: present
+
+    - name: create MySQL user
+      ansible.builtin.user:
+        name: "{{ mysql_user }}"
+        system: yes
+        state: present
+
+    - name: Create data directories
+      ansible.builtin.file:
+        path: "{{ item['datadir'] }}"
+        state: directory
+        owner: mysql
+        group: mysql
+        mode: '0755'
+      with_items: "{{ mysql_instances }}"
+
+    - name: Create log directories
+      ansible.builtin.file:
+        path: "{{ item['logdir'] }}"
+        state: directory
+        owner: "{{ mysql_user }}"
+        group: "{{ mysql_group }}"
+        mode: '0755'
+      with_items: "{{ mysql_instances }}"
+
+    - name: create sysconfig file
+      ansible.builtin.copy:
+        src: sysconfig-mysql
+        dest: /etc/sysconfig/mysql
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install the repo's
+      yum:
+        name: "{{ item }}"
+        state: present
+        disable_gpg_check: yes
+      with_items: "{{ repos }}"
+
+    - name: disable default mysql module
+      command: yum module disable mysql -y
+
+    - name: Install packages
+      yum:
+        name: "{{ item }}"
+        state: present
+      with_items: "{{ packages }}"
+
+    - name: Disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+
+    - name: Ensure SELinux is set disabled
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: SELINUX=disabled
+
+    - name: install mysql datadirs
+      command: "mysqld --initialize-insecure --user={{ mysql_user }} --datadir={{ item['datadir'] }} --log_error={{ item['logdir'] }}/error.log"
+      args:
+        creates: "{{ item['datadir'] }}/ibdata1"
+      with_items: "{{ mysql_instances }}"
+
+    - name: create main my.cnf file
+      ansible.builtin.copy:
+        src: my.cnf
+        dest: /etc/my.cnf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: create instance my.cnf files
+      ansible.builtin.template:
+        src: my.cnf.j2
+        dest: "/etc/my.cnf.d/{{ item['name'] }}.cnf"
+        owner: root
+        group: root
+        mode: '0644'
+      with_items: "{{ mysql_instances }}"
+
+    - name: start mysql instance
+      service:
+        name: "mysqld@{{ item['name'] }}"
+        state: started
+        enabled: yes
+      with_items: "{{ mysql_instances }}"
+
+    - name: Create replication user on primary
+      mysql_user:
+        state: present
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3301
+        name: "{{ mysql_replication['username'] }}"
+        host: "{{ mysql_replication['hostmask'] }}"
+        password: "{{ mysql_replication['password'] }}"
+        priv: "*.*:REPLICATION SLAVE"
+
+    - name: Check if replica is already configured for replication (on 3302)
+      mysql_replication:
+        mode: getreplica
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3302
+      ignore_errors: true
+      register: replica_3302
+
+    - name: Change the primary in replica to start the replication (on 3302)
+      mysql_replication:
+        mode: changeprimary
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3302
+        primary_host: 127.0.0.1
+        primary_port: 3301
+        primary_user: "{{ mysql_replication['username'] }}"
+        primary_password: "{{ mysql_replication['password'] }}"
+        primary_auto_position: yes
+      when: ( replica_3302.failed == true or ( replica_3302.Replica_IO_Running is not defined and replica_3302.Replica_SQL_Running is not defined ) )
+
+    - name: Start replication (on 3302)
+      mysql_replication:
+        mode: startreplica
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3302
+
+    - name: Check if replica is already configured for replication (on 3303)
+      mysql_replication:
+        mode: getreplica
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3303
+      ignore_errors: true
+      register: replica_3303
+
+    - name: Change the primary in replica to start the replication (on 3303)
+      mysql_replication:
+        mode: changeprimary
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3303
+        primary_host: 127.0.0.1
+        primary_port: 3301
+        primary_user: "{{ mysql_replication['username'] }}"
+        primary_password: "{{ mysql_replication['password'] }}"
+        primary_auto_position: yes
+      when: ( replica_3303.failed == true or ( replica_3303.Replica_IO_Running is not defined and replica_3303.Replica_SQL_Running is not defined ) )
+
+    - name: Start replication (on 3303)
+      mysql_replication:
+        mode: startreplica
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3303
+
+    - name: set primary writeable
+      community.mysql.mysql_query:
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3301
+        query: SET GLOBAL read_only = OFF;
+
+    - name: Create application database
+      community.mysql.mysql_db:
+        name: "{{ application['database'] }}"
+        state: present
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3301
+
+    - name: Create application user on primary
+      mysql_user:
+        state: present
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3301
+        name: "{{ application['username'] }}"
+        host: "{{ application['hostmask'] }}"
+        password: "{{ application['password'] }}"
+        priv: "{{ application['database']}}.*:{{ application['privileges'] }}"
+
+    - name: Create root@% user on primary
+      mysql_user:
+        state: present
+        login_user: root
+        login_host: 127.0.0.1
+        login_port: 3301
+        name: root
+        host: '%'
+        password: ''
+        priv: "*.*:ALL,GRANT"
+
+    - name: create check scripts
+      ansible.builtin.template:
+        src: mysqlchk.sh.j2
+        dest: "/usr/local/bin/{{ item['name'] }}.mysqlchk.sh"
+        owner: root
+        group: root
+        mode: '0755'
+      with_items: "{{ mysql_instances }}"
+
+    - name: create check service
+      ansible.builtin.template:
+        src: mysqlchk-service.j2
+        dest: "/etc/xinetd.d/{{ item['name'] }}-mysqlchk-stream"
+        owner: root
+        group: root
+        mode: '0600'
+      with_items: "{{ mysql_instances }}"
+
+    - name: Enable mysqlchk xinetd service
+      lineinfile:
+        dest: /etc/services
+        regexp: "^{{ item['name'] }}-mysqlchk"
+        line: "{{ item['name'] }}-mysqlchk {{ item['check_port'] }}/tcp  {{ item['name'] }}-mysqlchk"
+      with_items: "{{ mysql_instances }}"
+
+    - name: restart xinetd
+      service:
+        name: xinetd
+        state: restarted
+        enabled: yes
+
+    - name: create haproxy configfile
+      ansible.builtin.copy:
+        src: haproxy.cnf
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: start haproxy
+      service:
+        name: haproxy
+        state: restarted
+        enabled: yes
+
+    ###### application config
+    - name: application directory
+      ansible.builtin.file:
+        path: "{{ application['directory'] }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: application config directory
+      ansible.builtin.file:
+        path: "{{ application['configdir'] }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: create haproxy configfile
+      ansible.builtin.copy:
+        src: application/TrafficTestApp.py
+        dest: "{{ application['directory'] }}/application.py"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: create application configfile
+      ansible.builtin.copy:
+        src: application/config.yaml
+        dest: "{{ application['configdir'] }}/config.yaml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: create application service
+      ansible.builtin.template:
+        src: application.service.j2
+        dest: "/etc/systemd/system/{{ application['service'] }}"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: restart application
+      service:
+        name: "{{ application['service'] }}"
+        state: restarted
+        enabled: yes
